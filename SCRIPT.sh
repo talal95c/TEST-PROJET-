@@ -84,36 +84,36 @@ if [ "$ACTION" = "histo" ]; then
         exit 1
     fi
     
-    echo ""
+  
     echo "=== Génération d'histogramme : mode $OPTION ==="
     
-    # Preparation des fichiers temporaires
-    TMP_USINES="tmp/usines.tmp"
-    TMP_CAPTAGES="tmp/captages.tmp"
-    TMP_FILTERED="tmp/filtered_data.tmp"
-    OUTPUT_FILE="tests/histo_${OPTION}.dat"
-    
-    # Filtrage des donnees avec grep et awk
-    echo "Extraction des données..."
-    
-    # Extraire les lignes des usines (capacite maximale)
-    # Format: -;Usine;-;capacite;-
-    grep -E "^-;(Plant|Module|Unit|Facility)" "$DATA_FILE" | \
-        grep -E ";-;[0-9]+;-$" > "$TMP_USINES"
-    
-    # Extraire les lignes de captage (source -> usine)
-    # Format: -;Source;Usine;volume;pourcentage
-    grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" "$DATA_FILE" | \
-        grep -E ";(Plant|Module|Unit|Facility)" > "$TMP_CAPTAGES"
-    
-    # Compter les lignes trouvees
-    NB_USINES=$(wc -l < "$TMP_USINES")
-    NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
-    echo "  -> $NB_USINES usines trouvées"
-    echo "  -> $NB_CAPTAGES captages trouvés"
+                                                                                                        # Preparation des fichiers temporaires
+                                                                                                        TMP_USINES="tmp/usines.tmp"
+                                                                                                        TMP_CAPTAGES="tmp/captages.tmp"
+                                                                                                        TMP_FILTERED="tmp/filtered_data.tmp"
+                                                                                                        OUTPUT_FILE="tests/histo_${OPTION}.dat"
+                                                                                                        
+                                                                                                        # Filtrage des donnees avec grep et awk
+                                                                                                        echo "Extraction des données..."
+                                                                                                        
+                                                                                                        # Extraire les lignes des usines (capacite maximale)
+                                                                                                        # Format: -;Usine;-;capacite;-
+                                                                                                        grep -E "^-;(Plant|Module|Unit|Facility)" "$DATA_FILE" | \
+                                                                                                            grep -E ";-;[0-9]+;-$" > "$TMP_USINES"
+                                                                                                        
+                                                                                                        # Extraire les lignes de captage (source -> usine)
+                                                                                                        # Format: -;Source;Usine;volume;pourcentage
+                                                                                                        grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" "$DATA_FILE" | \
+                                                                                                            grep -E ";(Plant|Module|Unit|Facility)" > "$TMP_CAPTAGES"
+                                                                                                        
+                                                                                                        # Compter les lignes trouvees
+                                                                                                        NB_USINES=$(wc -l < "$TMP_USINES")
+                                                                                                        NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
+                                                                                                        echo "  -> $NB_USINES usines trouvées"
+                                                                                                        echo "  -> $NB_CAPTAGES captages trouvés"
     
     # Combiner les donnees pour le programme C
-    cat "$TMP_USINES" "$TMP_CAPTAGES" > "$TMP_FILTERED"
+                                                                                                        cat "$TMP_USINES" "$TMP_CAPTAGES" > "$TMP_FILTERED"
     
     # Appel du programme C
     echo "Traitement des données..."
@@ -134,39 +134,39 @@ if [ "$ACTION" = "histo" ]; then
         exit 1
     fi
     
-    echo "Données générées avec succès"
+    echo "Données filtres avec succès"
     
     # Generation des graphiques avec gnuplot
-    echo ""
+    
     echo "=== Génération des graphiques ==="
     
     # Fichiers temporaires pour les graphiques
-    TMP_BIG="tmp/big_${OPTION}.tmp"
-    TMP_SMALL="tmp/small_${OPTION}.tmp"
+                                                                                                            TMP_BIG="tmp/big_${OPTION}.tmp"
+                                                                                                            TMP_SMALL="tmp/small_${OPTION}.tmp"
     
     # Selon le mode, trier et extraire les donnees
-    if [ "$OPTION" = "all" ]; then
-        # Mode all : 4 colonnes (id;real;lost;available)
-        # Trier par somme des colonnes 2, 3 et 4
-        awk -F';' 'NR>1 {
-            total = $2 + $3 + $4
-            print $0 ";" total
-        }' "$OUTPUT_FILE" | sort -t';' -k5 -n -r | head -10 | \
-            awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_BIG"
-        
-        awk -F';' 'NR>1 {
-            total = $2 + $3 + $4
-            print $0 ";" total
-        }' "$OUTPUT_FILE" | sort -t';' -k5 -n | head -50 | \
-            awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_SMALL"
-    else
-        # Mode simple : 2 colonnes (id;valeur)
-        awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
-            sort -t';' -k2 -n -r | head -10 > "$TMP_BIG"
-        
-        awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
-            sort -t';' -k2 -n | head -50 > "$TMP_SMALL"
-    fi
+                                                                                                            if [ "$OPTION" = "all" ]; then
+                                                                                                                # Mode all : 4 colonnes (id;real;lost;available)
+                                                                                                                # Trier par somme des colonnes 2, 3 et 4
+                                                                                                                awk -F';' 'NR>1 {
+                                                                                                                    total = $2 + $3 + $4
+                                                                                                                    print $0 ";" total
+                                                                                                                }' "$OUTPUT_FILE" | sort -t';' -k5 -n -r | head -10 | \
+                                                                                                                    awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_BIG"
+                                                                                                                
+                                                                                                                awk -F';' 'NR>1 {
+                                                                                                                    total = $2 + $3 + $4
+                                                                                                                    print $0 ";" total
+                                                                                                                }' "$OUTPUT_FILE" | sort -t';' -k5 -n | head -50 | \
+                                                                                                                    awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_SMALL"
+                                                                                                            else
+                                                                                                                # Mode simple : 2 colonnes (id;valeur)
+                                                                                                                awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
+                                                                                                                    sort -t';' -k2 -n -r | head -10 > "$TMP_BIG"
+                                                                                                                
+                                                                                                                awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
+                                                                                                                    sort -t';' -k2 -n | head -50 > "$TMP_SMALL"
+                                                                                                            fi
     
     # Definition des titres selon le mode
     if [ "$OPTION" = "max" ]; then
@@ -320,23 +320,23 @@ elif [ "$ACTION" = "leaks" ]; then
     # Filtrage des donnees pour cette usine specifique
     echo "Extraction des données de l'usine..."
     
-    # Extraire les captages vers cette usine
-    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-        grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" > "$TMP_CAPTAGES"
+                                                                                                                                                    # Extraire les captages vers cette usine
+                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
+                                                                                                                                                        grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" > "$TMP_CAPTAGES"
+                                                                                                                                                    
+                                                                                                                                                    # Extraire les troncons de distribution de cette usine
+                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
+                                                                                                                                                        grep -v "^-;" > "$TMP_DISTRIB"
+                                                                                                                                                    
+                                                                                                                                                    # Extraire aussi les troncons usine -> stockage
+                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
+                                                                                                                                                        grep -E "^-;.*Storage" >> "$TMP_DISTRIB"
     
-    # Extraire les troncons de distribution de cette usine
-    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-        grep -v "^-;" > "$TMP_DISTRIB"
-    
-    # Extraire aussi les troncons usine -> stockage
-    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-        grep -E "^-;.*Storage" >> "$TMP_DISTRIB"
-    
-    # Compter les lignes trouvees
-    NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
-    NB_DISTRIB=$(wc -l < "$TMP_DISTRIB")
-    echo "  -> $NB_CAPTAGES captages trouvés"
-    echo "  -> $NB_DISTRIB tronçons de distribution trouvés"
+                                                                                                                                                    # Compter les lignes trouvees
+                                                                                                                                                    NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
+                                                                                                                                                    NB_DISTRIB=$(wc -l < "$TMP_DISTRIB")
+                                                                                                                                                    echo "  -> $NB_CAPTAGES captages trouvés"
+                                                                                                                                                    echo "  -> $NB_DISTRIB tronçons de distribution trouvés"
     
     # Combiner les donnees
     cat "$TMP_CAPTAGES" "$TMP_DISTRIB" > "$TMP_FILTERED"
