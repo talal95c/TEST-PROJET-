@@ -12,7 +12,7 @@
 DEBUT=$(date +%s%3N)
 
 # Repertoires du projet
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+                                                                                                                                            SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CODE_C_DIR="$SCRIPT_DIR/codeC"
 GRAPHS_DIR="$SCRIPT_DIR/graphs"
 TESTS_DIR="$SCRIPT_DIR/tests"
@@ -37,11 +37,11 @@ afficher_usage() {
 }
 
 # Affiche un message d'erreur et termine le script
-erreur() {
-    echo "Erreur : $1" >&2
-    afficher_duree
-    exit 1
-}
+                                                                                                                                                                                            erreur() {
+                                                                                                                                                                                                echo "Erreur : $1" >&2
+                                                                                                                                                                                                afficher_duree
+                                                                                                                                                                                                exit 1
+                                                                                                                                                                                            }
 
 # Affiche la duree totale d'execution du script
 afficher_duree() {
@@ -85,7 +85,7 @@ mkdir -p "$GRAPHS_DIR" "$TESTS_DIR" "$TEMP_DIR"
 echo "=== Verification de la compilation ==="
 
 # Se deplacer dans le repertoire du code C
-cd "$CODE_C_DIR" || erreur "Impossible d'acceder au repertoire codeC"
+                                                                                                                                            cd "$CODE_C_DIR" || erreur "Impossible d'acceder au repertoire codeC"
 
 # Verifier si l'executable existe, sinon compiler avec make
 if [ ! -f "wildwater" ]; then
@@ -100,7 +100,7 @@ else
 fi
 
 # Revenir au repertoire principal
-cd "$SCRIPT_DIR" || erreur "Impossible de revenir au repertoire principal"
+                                                                                                                        cd "$SCRIPT_DIR" || erreur "Impossible de revenir au repertoire principal"
 
 # =============================================================================
 # TRAITEMENT HISTOGRAMME
@@ -118,12 +118,11 @@ if [ "$COMMANDE" = "histo" ]; then
         erreur "Option invalide : '$OPTION'. Options valides : max, src, real, all"
     fi
     
-    echo ""
     echo "=== Generation d'histogramme : mode $OPTION ==="
-    
-    # Definition des noms de fichiers
-    DONNEES_FILTREES="$TEMP_DIR/donnees_filtrees.csv"
-    FICHIER_SORTIE="$TESTS_DIR/vol_$OPTION.dat"
+                                                                                                                                                                                                                    
+                                                                                                                                                                                                                    # Definition des noms de fichiers
+                                                                                                                                                                                                                    DONNEES_FILTREES="$TEMP_DIR/donnees_filtrees.csv"
+                                                                                                                                                                                                                    FICHIER_SORTIE="$TESTS_DIR/vol_$OPTION.dat"
     
     # =========================================================================
     # Filtrage des donnees avec grep et awk
@@ -134,14 +133,14 @@ if [ "$COMMANDE" = "histo" ]; then
     # Extraction des lignes d'usines (description de capacite maximale)
     # Format attendu : -;Usine;-;capacite;-
     echo "  -> Extraction des capacites maximales des usines..."
-    grep -E "^-;(Plant #|Module #|Unit #|Facility complex #)" "$FICHIER_DONNEES" | \
-        grep -E ";-;[0-9]+;-$" > "$TEMP_DIR/usines.csv"
+                                                                                                                                                                                                    grep -E "^-;(Plant #|Module #|Unit #|Facility complex #)" "$FICHIER_DONNEES" | \
+                                                                                                                                                                                                        grep -E ";-;[0-9]+;-$" > "$TEMP_DIR/usines.csv"
     
     # Extraction des lignes de captage (source vers usine)
     # Format attendu : -;Source;Usine;volume;pourcentage
     echo "  -> Extraction des volumes captes par les sources..."
-    grep -E "^-;(Source #|Well #|Spring #|Fountain #|Resurgence #)" "$FICHIER_DONNEES" | \
-        grep -E ";(Plant #|Module #|Unit #|Facility complex #)" > "$TEMP_DIR/captages.csv"
+                                                                                                                                                                                                        grep -E "^-;(Source #|Well #|Spring #|Fountain #|Resurgence #)" "$FICHIER_DONNEES" | \
+                                                                                                                                                                                                            grep -E ";(Plant #|Module #|Unit #|Facility complex #)" > "$TEMP_DIR/captages.csv"
     
     # Compter le nombre de lignes extraites
     NB_USINES=$(wc -l < "$TEMP_DIR/usines.csv")
@@ -163,7 +162,7 @@ if [ "$COMMANDE" = "histo" ]; then
     # =========================================================================
     
     echo "Appel du programme C pour le traitement..."
-    "$CODE_C_DIR/wildwater" histo "$OPTION" "$DONNEES_FILTREES" "$FICHIER_SORTIE"
+                                                                                                                            "$CODE_C_DIR/wildwater" histo "$OPTION" "$DONNEES_FILTREES" "$FICHIER_SORTIE"
     
     # Verification du code retour du programme C
     if [ $? -ne 0 ]; then
