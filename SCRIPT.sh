@@ -1,376 +1,364 @@
 #!/bin/bash
 
-# Script principal du projet C-Wildwater
-# Gere le traitement des donnees de distribution d'eau
+# =============================================================================
+# c-wildwater.sh - Script de traitement des donnees de distribution d'eau
+# Projet C-Wildwater - PreIng2 2025-2026
+# 
+# Ce script filtre les donnees avec grep/awk, appelle le programme C wildwater
+# et genere les graphiques avec gnuplot.
+# =============================================================================
 
-# Enregistrement du temps de debut
-START_TIME=$(date +%s%3N)
+# Enregistrement du temps de debut pour mesurer la duree d'execution
+DEBUT=$(date +%s%3N)
 
-# Fonction pour afficher la duree d'execution
-afficher_duree() {
-    END_TIME=$(date +%s%3N)
-    DURATION=$((END_TIME - START_TIME))
+# Repertoires du projet
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CODE_C_DIR="$SCRIPT_DIR/codeC"
+GRAPHS_DIR="$SCRIPT_DIR/graphs"
+TESTS_DIR="$SCRIPT_DIR/tests"
+TEMP_DIR="$SCRIPT_DIR/tmp"
+
+# =============================================================================
+# Fonctions utilitaires
+# =============================================================================
+
+# Affiche les instructions d'utilisation du script
+afficher_usage() {
+    echo "Usage : $0 <fichier.dat> <commande> [options]"
     echo ""
-    echo "Durée totale d'exécution : ${DURATION} ms"
+    echo "Commandes disponibles :"
+    echo "  histo {max|src|real|all}  - Generation d'histogrammes des usines"
+    echo "  leaks \"<identifiant>\"     - Calcul des fuites pour une usine donnee"
+    echo ""
+    echo "Exemples d'utilisation :"
+    echo "  $0 wildwater.dat histo max"
+    echo "  $0 wildwater.dat histo src"
+    echo "  $0 wildwater.dat leaks \"Facility complex #RH400057F\""
 }
 
-# Verification du nombre d'arguments minimum
-if [ "$#" -lt 2 ]; then
-    echo "Erreur : Nombre d'arguments insuffisant"
-    echo "Usage : $0 <fichier.dat> <action> [options]"
-    echo ""
-    echo "Actions disponibles :"
-    echo "  histo {max|src|real|all}  - Génère des histogrammes"
-    echo "  leaks \"<identifiant>\"     - Calcule les fuites d'une usine"
-    echo ""
-    echo "Exemples :"
-    echo "  $0 donnees.dat histo max"
-    echo "  $0 donnees.dat leaks \"Facility complex #RH400057F\""
+# Affiche un message d'erreur et termine le script
+erreur() {
+    echo "Erreur : $1" >&2
     afficher_duree
     exit 1
+}
+
+# Affiche la duree totale d'execution du script
+afficher_duree() {
+    FIN=$(date +%s%3N)
+    DUREE=$((FIN - DEBUT))
+    echo ""
+    echo "Duree totale d'execution : ${DUREE} ms"
+}
+
+# =============================================================================
+# Verification des arguments de la ligne de commande
+# =============================================================================
+
+# Verifier qu'il y a au moins 2 arguments
+if [ "$#" -lt 2 ]; then
+    afficher_usage
+    erreur "Nombre d'arguments insuffisant"
 fi
 
-# Recuperation des arguments
-DATA_FILE="$1"
-ACTION="$2"
+FICHIER_DONNEES="$1"
+COMMANDE="$2"
 OPTION="$3"
 
-# Verification qu'il n'y a pas trop d'arguments
+# Verifier qu'il n'y a pas trop d'arguments
 if [ "$#" -gt 3 ]; then
-    echo "Erreur : Trop d'arguments fournis"
-    afficher_duree
-    exit 1
+    erreur "Trop d'arguments fournis"
 fi
 
-# Verification de l'existence du fichier de donnees
-if [ ! -f "$DATA_FILE" ]; then
-    echo "Erreur : fichier $DATA_FILE introuvable"
-    afficher_duree
-    exit 1
+# Verifier que le fichier de donnees existe
+if [ ! -f "$FICHIER_DONNEES" ]; then
+    erreur "Le fichier '$FICHIER_DONNEES' est introuvable"
 fi
 
-# Creation des repertoires necessaires
-mkdir -p graphs tests tmp
+# Creer les repertoires necessaires s'ils n'existent pas
+mkdir -p "$GRAPHS_DIR" "$TESTS_DIR" "$TEMP_DIR"
 
-# Verification et compilation du programme C si necessaire
-if [ ! -f "./wildwater" ]; then
-    echo "Compilation du programme C..."
+# =============================================================================
+# Compilation du programme C avec make
+# =============================================================================
+
+echo "=== Verification de la compilation ==="
+
+# Se deplacer dans le repertoire du code C
+cd "$CODE_C_DIR" || erreur "Impossible d'acceder au repertoire codeC"
+
+# Verifier si l'executable existe, sinon compiler avec make
+if [ ! -f "wildwater" ]; then
+    echo "Compilation du programme C avec make..."
     make
     if [ $? -ne 0 ]; then
-        echo "Erreur : échec de la compilation"
-        afficher_duree
-        exit 1
+        erreur "La compilation a echoue"
     fi
-    echo "Compilation réussie"
+    echo "Compilation terminee avec succes"
 else
-    echo "Executable déjà présent"
+    echo "L'executable wildwater existe deja"
 fi
 
-# Traitement selon l'action demandee
-if [ "$ACTION" = "histo" ]; then
-    # Verification de la presence de l'option
+# Revenir au repertoire principal
+cd "$SCRIPT_DIR" || erreur "Impossible de revenir au repertoire principal"
+
+# =============================================================================
+# TRAITEMENT HISTOGRAMME
+# =============================================================================
+
+if [ "$COMMANDE" = "histo" ]; then
+    
+    # Verification que l'option est bien fournie
     if [ "$#" -ne 3 ]; then
-        echo "Erreur : l'action 'histo' nécessite une option"
-        echo "Usage : $0 <fichier.dat> histo {max|src|real|all}"
-        afficher_duree
-        exit 1
+        erreur "La commande 'histo' necessite une option (max, src, real ou all)"
     fi
     
     # Verification que l'option est valide
     if [[ "$OPTION" != "max" && "$OPTION" != "src" && "$OPTION" != "real" && "$OPTION" != "all" ]]; then
-        echo "Erreur : option invalide ($OPTION)"
-        echo "Options valides : max, src, real, all"
-        afficher_duree
-        exit 1
+        erreur "Option invalide : '$OPTION'. Options valides : max, src, real, all"
     fi
     
-  
-    echo "=== Génération d'histogramme : mode $OPTION ==="
+    echo ""
+    echo "=== Generation d'histogramme : mode $OPTION ==="
     
-                                                                                                        # Preparation des fichiers temporaires
-                                                                                                        TMP_USINES="tmp/usines.tmp"
-                                                                                                        TMP_CAPTAGES="tmp/captages.tmp"
-                                                                                                        TMP_FILTERED="tmp/filtered_data.tmp"
-                                                                                                        OUTPUT_FILE="tests/histo_${OPTION}.dat"
-                                                                                                        
-                                                                                                        # Filtrage des donnees avec grep et awk
-                                                                                                        echo "Extraction des données..."
-                                                                                                        
-                                                                                                        # Extraire les lignes des usines (capacite maximale)
-                                                                                                        # Format: -;Usine;-;capacite;-
-                                                                                                        grep -E "^-;(Plant|Module|Unit|Facility)" "$DATA_FILE" | \
-                                                                                                            grep -E ";-;[0-9]+;-$" > "$TMP_USINES"
-                                                                                                        
-                                                                                                        # Extraire les lignes de captage (source -> usine)
-                                                                                                        # Format: -;Source;Usine;volume;pourcentage
-                                                                                                        grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" "$DATA_FILE" | \
-                                                                                                            grep -E ";(Plant|Module|Unit|Facility)" > "$TMP_CAPTAGES"
-                                                                                                        
-                                                                                                        # Compter les lignes trouvees
-                                                                                                        NB_USINES=$(wc -l < "$TMP_USINES")
-                                                                                                        NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
-                                                                                                        echo "  -> $NB_USINES usines trouvées"
-                                                                                                        echo "  -> $NB_CAPTAGES captages trouvés"
+    # Definition des noms de fichiers
+    DONNEES_FILTREES="$TEMP_DIR/donnees_filtrees.csv"
+    FICHIER_SORTIE="$TESTS_DIR/vol_$OPTION.dat"
     
-    # Combiner les donnees pour le programme C
-                                                                                                        cat "$TMP_USINES" "$TMP_CAPTAGES" > "$TMP_FILTERED"
+    # =========================================================================
+    # Filtrage des donnees avec grep et awk
+    # =========================================================================
     
+    echo "Filtrage des donnees avec grep et awk..."
+    
+    # Extraction des lignes d'usines (description de capacite maximale)
+    # Format attendu : -;Usine;-;capacite;-
+    echo "  -> Extraction des capacites maximales des usines..."
+    grep -E "^-;(Plant #|Module #|Unit #|Facility complex #)" "$FICHIER_DONNEES" | \
+        grep -E ";-;[0-9]+;-$" > "$TEMP_DIR/usines.csv"
+    
+    # Extraction des lignes de captage (source vers usine)
+    # Format attendu : -;Source;Usine;volume;pourcentage
+    echo "  -> Extraction des volumes captes par les sources..."
+    grep -E "^-;(Source #|Well #|Spring #|Fountain #|Resurgence #)" "$FICHIER_DONNEES" | \
+        grep -E ";(Plant #|Module #|Unit #|Facility complex #)" > "$TEMP_DIR/captages.csv"
+    
+    # Compter le nombre de lignes extraites
+    NB_USINES=$(wc -l < "$TEMP_DIR/usines.csv")
+    NB_CAPTAGES=$(wc -l < "$TEMP_DIR/captages.csv")
+    echo "  -> $NB_USINES usines trouvees"
+    echo "  -> $NB_CAPTAGES relations de captage trouvees"
+    
+    # Combiner les deux fichiers pour le programme C
+    cat "$TEMP_DIR/usines.csv" "$TEMP_DIR/captages.csv" > "$DONNEES_FILTREES"
+    
+    # Verification que des donnees ont bien ete extraites
+    if [ ! -s "$DONNEES_FILTREES" ]; then
+        rm -f "$DONNEES_FILTREES" "$TEMP_DIR"/*.csv
+        erreur "Aucune donnee n'a pu etre extraite du fichier"
+    fi
+    
+    # =========================================================================
     # Appel du programme C
-    echo "Traitement des données..."
-    ./wildwater histo "$OPTION" "$TMP_FILTERED" "$OUTPUT_FILE"
+    # =========================================================================
     
+    echo "Appel du programme C pour le traitement..."
+    "$CODE_C_DIR/wildwater" histo "$OPTION" "$DONNEES_FILTREES" "$FICHIER_SORTIE"
+    
+    # Verification du code retour du programme C
     if [ $? -ne 0 ]; then
-        echo "Erreur lors de l'exécution du programme C"
-        rm -f "$TMP_USINES" "$TMP_CAPTAGES" "$TMP_FILTERED"
-        afficher_duree
-        exit 1
+        rm -f "$DONNEES_FILTREES" "$TEMP_DIR"/*.csv
+        erreur "Le programme C a retourne une erreur"
     fi
     
-    # Verification que le fichier de sortie existe
-    if [ ! -f "$OUTPUT_FILE" ]; then
-        echo "Erreur : le fichier de sortie n'a pas été créé"
-        rm -f "$TMP_USINES" "$TMP_CAPTAGES" "$TMP_FILTERED"
-        afficher_duree
-        exit 1
+    echo "Traitement des donnees termine avec succes"
+    
+    # =========================================================================
+    # Preparation des donnees pour gnuplot
+    # =========================================================================
+    
+    echo "Preparation des donnees pour les graphiques..."
+    
+    FICHIER_PETITES="$TEMP_DIR/petites_$OPTION.dat"
+    FICHIER_GRANDES="$TEMP_DIR/grandes_$OPTION.dat"
+    
+    if [ "$OPTION" = "all" ]; then
+        # Mode bonus : trier par le total des 3 colonnes
+        awk -F';' 'NR>1 {total=$2+$3+$4; print $0";"total}' "$FICHIER_SORTIE" | \
+            sort -t';' -k5 -n | head -50 | \
+            awk -F';' '{print $1";"$2";"$3";"$4}' > "$FICHIER_PETITES"
+        
+        awk -F';' 'NR>1 {total=$2+$3+$4; print $0";"total}' "$FICHIER_SORTIE" | \
+            sort -t';' -k5 -nr | head -10 | \
+            awk -F';' '{print $1";"$2";"$3";"$4}' > "$FICHIER_GRANDES"
+    else
+        # Mode simple : trier par la colonne 2 (valeur)
+        awk -F';' 'NR>1' "$FICHIER_SORTIE" | sort -t';' -k2 -n | head -50 > "$FICHIER_PETITES"
+        awk -F';' 'NR>1' "$FICHIER_SORTIE" | sort -t';' -k2 -nr | head -10 > "$FICHIER_GRANDES"
     fi
     
-    echo "Données filtres avec succès"
+    # =========================================================================
+    # Definition des parametres pour gnuplot selon le mode
+    # =========================================================================
     
+    case "$OPTION" in
+        max)
+            YLABEL="Volume (M.m³.year⁻¹)"
+            TITRE="Capacite maximale de traitement"
+            ;;
+        src)
+            YLABEL="Volume (M.m³.year⁻¹)"
+            TITRE="Volume capte par les sources"
+            ;;
+        real)
+            YLABEL="Volume (M.m³.year⁻¹)"
+            TITRE="Volume reellement traite"
+            ;;
+        all)
+            YLABEL="Volume (M.m³.year⁻¹)"
+            TITRE="Donnees combinees (reel, perdu, disponible)"
+            ;;
+    esac
+    
+    # =========================================================================
     # Generation des graphiques avec gnuplot
+    # =========================================================================
     
-    echo "=== Génération des graphiques ==="
-    
-    # Fichiers temporaires pour les graphiques
-                                                                                                            TMP_BIG="tmp/big_${OPTION}.tmp"
-                                                                                                            TMP_SMALL="tmp/small_${OPTION}.tmp"
-    
-    # Selon le mode, trier et extraire les donnees
-                                                                                                            if [ "$OPTION" = "all" ]; then
-                                                                                                                # Mode all : 4 colonnes (id;real;lost;available)
-                                                                                                                # Trier par somme des colonnes 2, 3 et 4
-                                                                                                                awk -F';' 'NR>1 {
-                                                                                                                    total = $2 + $3 + $4
-                                                                                                                    print $0 ";" total
-                                                                                                                }' "$OUTPUT_FILE" | sort -t';' -k5 -n -r | head -10 | \
-                                                                                                                    awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_BIG"
-                                                                                                                
-                                                                                                                awk -F';' 'NR>1 {
-                                                                                                                    total = $2 + $3 + $4
-                                                                                                                    print $0 ";" total
-                                                                                                                }' "$OUTPUT_FILE" | sort -t';' -k5 -n | head -50 | \
-                                                                                                                    awk -F';' '{print $1";"$2";"$3";"$4}' > "$TMP_SMALL"
-                                                                                                            else
-                                                                                                                # Mode simple : 2 colonnes (id;valeur)
-                                                                                                                awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
-                                                                                                                    sort -t';' -k2 -n -r | head -10 > "$TMP_BIG"
-                                                                                                                
-                                                                                                                awk -F';' 'NR>1 {print $0}' "$OUTPUT_FILE" | \
-                                                                                                                    sort -t';' -k2 -n | head -50 > "$TMP_SMALL"
-                                                                                                            fi
-    
-    # Definition des titres selon le mode
-    if [ "$OPTION" = "max" ]; then
-        TITLE_SUFFIX="Capacité maximale"
-        YLABEL="Volume (M.m³)"
-    elif [ "$OPTION" = "src" ]; then
-        TITLE_SUFFIX="Volume capté"
-        YLABEL="Volume (M.m³)"
-    elif [ "$OPTION" = "real" ]; then
-        TITLE_SUFFIX="Volume traité"
-        YLABEL="Volume (M.m³)"
-    else
-        TITLE_SUFFIX="Données combinées"
-        YLABEL="Volume (M.m³)"
-    fi
-    
-    # Generation du graphique des 10 plus grandes usines
-    echo "Création du graphique des 10 plus grandes usines..."
+    echo "Generation des graphiques avec gnuplot..."
     
     if [ "$OPTION" = "all" ]; then
-        # Graphique empile pour le mode all
+        # Graphiques empiles pour le mode bonus
         gnuplot <<EOF
-set terminal png size 1200,800
-set output "graphs/histo_${OPTION}_big.png"
-set title "10 plus grandes usines - $TITLE_SUFFIX"
-set xlabel "Identifiant usine"
-set ylabel "$YLABEL"
+set terminal png size 1400,900
 set datafile separator ";"
 set style data histogram
 set style histogram rowstacked
 set style fill solid border -1
 set boxwidth 0.8
-set xtics rotate by -45 font ",10"
-set key outside right top
+set xtics rotate by -45 font ",8"
 set grid y
+set key outside right top
 
-plot "$TMP_BIG" using 2:xtic(1) title "Volume traité" lc rgb "#6699FF", \
+set output "$GRAPHS_DIR/vol_${OPTION}_small.png"
+set title "50 plus petites usines - $TITRE"
+set ylabel "$YLABEL"
+set xlabel "Identifiant de l'usine"
+plot "$FICHIER_PETITES" using 2:xtic(1) title "Volume reel" lc rgb "#6699FF", \
      '' using 3 title "Volume perdu" lc rgb "#FF6666", \
-     '' using 4 title "Capacité disponible" lc rgb "#99FF99"
+     '' using 4 title "Capacite disponible" lc rgb "#99FF99"
+
+set output "$GRAPHS_DIR/vol_${OPTION}_big.png"
+set title "10 plus grandes usines - $TITRE"
+set ylabel "$YLABEL"
+set xlabel "Identifiant de l'usine"
+plot "$FICHIER_GRANDES" using 2:xtic(1) title "Volume reel" lc rgb "#6699FF", \
+     '' using 3 title "Volume perdu" lc rgb "#FF6666", \
+     '' using 4 title "Capacite disponible" lc rgb "#99FF99"
 EOF
     else
-        # Graphique simple
+        # Graphiques simples pour les modes max, src, real
         gnuplot <<EOF
-set terminal png size 1200,800
-set output "graphs/histo_${OPTION}_big.png"
-set title "10 plus grandes usines - $TITLE_SUFFIX"
-set xlabel "Identifiant usine"
-set ylabel "$YLABEL"
+set terminal png size 1400,900
 set datafile separator ";"
 set style data histograms
 set style fill solid border -1
-set boxwidth 0.8
-set xtics rotate by -45 font ",10"
+set boxwidth 0.9
+set xtics rotate by -45 font ",8"
 set grid y
 
-plot "$TMP_BIG" using 2:xtic(1) notitle lc rgb "#4477AA"
-EOF
-    fi
-    
-    if [ $? -eq 0 ]; then
-        echo "  -> graphs/histo_${OPTION}_big.png créé"
-    else
-        echo "Erreur lors de la génération du graphique"
-    fi
-    
-    # Generation du graphique des 50 plus petites usines
-    echo "Création du graphique des 50 plus petites usines..."
-    
-    if [ "$OPTION" = "all" ]; then
-        gnuplot <<EOF
-set terminal png size 1600,800
-set output "graphs/histo_${OPTION}_small.png"
-set title "50 plus petites usines - $TITLE_SUFFIX"
-set xlabel "Identifiant usine"
+set output "$GRAPHS_DIR/vol_${OPTION}_small.png"
+set title "50 plus petites usines - $TITRE"
 set ylabel "$YLABEL"
-set datafile separator ";"
-set style data histogram
-set style histogram rowstacked
-set style fill solid border -1
-set boxwidth 0.8
-set xtics rotate by -90 font ",8"
-set key outside right top
-set grid y
+set xlabel "Identifiant de l'usine"
+plot "$FICHIER_PETITES" using 2:xtic(1) notitle with histograms lc rgb "blue"
 
-plot "$TMP_SMALL" using 2:xtic(1) title "Volume traité" lc rgb "#6699FF", \
-     '' using 3 title "Volume perdu" lc rgb "#FF6666", \
-     '' using 4 title "Capacité disponible" lc rgb "#99FF99"
-EOF
-    else
-        gnuplot <<EOF
-set terminal png size 1600,800
-set output "graphs/histo_${OPTION}_small.png"
-set title "50 plus petites usines - $TITLE_SUFFIX"
-set xlabel "Identifiant usine"
+set output "$GRAPHS_DIR/vol_${OPTION}_big.png"
+set title "10 plus grandes usines - $TITRE"
 set ylabel "$YLABEL"
-set datafile separator ";"
-set style data histograms
-set style fill solid border -1
-set boxwidth 0.8
-set xtics rotate by -90 font ",8"
-set grid y
-
-plot "$TMP_SMALL" using 2:xtic(1) notitle lc rgb "#4477AA"
+set xlabel "Identifiant de l'usine"
+plot "$FICHIER_GRANDES" using 2:xtic(1) notitle with histograms lc rgb "red"
 EOF
     fi
     
+    # Verification de la generation des graphiques
     if [ $? -eq 0 ]; then
-        echo "  -> graphs/histo_${OPTION}_small.png créé"
+        echo "Graphiques generes avec succes :"
+        echo "  - $GRAPHS_DIR/vol_${OPTION}_small.png (50 plus petites usines)"
+        echo "  - $GRAPHS_DIR/vol_${OPTION}_big.png (10 plus grandes usines)"
     else
-        echo "Erreur lors de la génération du graphique"
+        erreur "Echec lors de la generation des graphiques avec gnuplot"
     fi
     
     # Nettoyage des fichiers temporaires
-    rm -f "$TMP_USINES" "$TMP_CAPTAGES" "$TMP_FILTERED" "$TMP_BIG" "$TMP_SMALL"
+    rm -f "$DONNEES_FILTREES" "$FICHIER_PETITES" "$FICHIER_GRANDES" "$TEMP_DIR"/*.csv
+
+# =============================================================================
+# TRAITEMENT CALCUL DES FUITES
+# =============================================================================
+
+elif [ "$COMMANDE" = "leaks" ]; then
     
-    echo ""
-    echo "=== Traitement terminé ==="
-    echo "Fichier de données : $OUTPUT_FILE"
-    echo "Graphiques générés dans le dossier graphs/"
-    
-elif [ "$ACTION" = "leaks" ]; then
-    # Verification de la presence de l'identifiant
+    # Verification que l'identifiant est fourni
     if [ "$#" -ne 3 ]; then
-        echo "Erreur : l'action 'leaks' nécessite un identifiant d'usine"
-        echo "Usage : $0 <fichier.dat> leaks \"<identifiant usine>\""
-        afficher_duree
-        exit 1
+        erreur "La commande 'leaks' necessite un identifiant d'usine"
     fi
     
-    # Verification que l'identifiant n'est pas vide
-    if [ -z "$OPTION" ]; then
-        echo "Erreur : identifiant d'usine vide"
-        afficher_duree
-        exit 1
-    fi
+    IDENTIFIANT_USINE="$3"
     
-    FACILITY_ID="$OPTION"
     echo ""
-    echo "=== Calcul des fuites pour : $FACILITY_ID ==="
+    echo "=== Calcul des fuites pour l'usine : $IDENTIFIANT_USINE ==="
     
-    OUTPUT_FILE="tests/leaks.dat"
-    TMP_CAPTAGES="tmp/captages_usine.tmp"
-    TMP_DISTRIB="tmp/distrib_usine.tmp"
-    TMP_FILTERED="tmp/filtered_leaks.tmp"
+    # Definition des noms de fichiers
+    FICHIER_SORTIE="$TESTS_DIR/leaks.dat"
+    RESULTAT_TEMPORAIRE="$TEMP_DIR/resultat_temp.dat"
     
-    # Creation de l'en-tete si le fichier n'existe pas
-    if [ ! -f "$OUTPUT_FILE" ]; then
-        echo "identifier;Leak volume (M.m³.year⁻¹)" > "$OUTPUT_FILE"
+    # Creer le fichier avec l'en-tete s'il n'existe pas encore
+    if [ ! -f "$FICHIER_SORTIE" ]; then
+        echo "identifier;Leak volume (M.m³.year⁻¹)" > "$FICHIER_SORTIE"
+        echo "Creation du fichier de sortie avec en-tete"
     fi
     
-    # Filtrage des donnees pour cette usine specifique
-    echo "Extraction des données de l'usine..."
-    
-                                                                                                                                                    # Extraire les captages vers cette usine
-                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-                                                                                                                                                        grep -E "^-;(Source|Well|Spring|Fountain|Resurgence)" > "$TMP_CAPTAGES"
-                                                                                                                                                    
-                                                                                                                                                    # Extraire les troncons de distribution de cette usine
-                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-                                                                                                                                                        grep -v "^-;" > "$TMP_DISTRIB"
-                                                                                                                                                    
-                                                                                                                                                    # Extraire aussi les troncons usine -> stockage
-                                                                                                                                                    grep -F "$FACILITY_ID" "$DATA_FILE" | \
-                                                                                                                                                        grep -E "^-;.*Storage" >> "$TMP_DISTRIB"
-    
-                                                                                                                                                    # Compter les lignes trouvees
-                                                                                                                                                    NB_CAPTAGES=$(wc -l < "$TMP_CAPTAGES")
-                                                                                                                                                    NB_DISTRIB=$(wc -l < "$TMP_DISTRIB")
-                                                                                                                                                    echo "  -> $NB_CAPTAGES captages trouvés"
-                                                                                                                                                    echo "  -> $NB_DISTRIB tronçons de distribution trouvés"
-    
-    # Combiner les donnees
-    cat "$TMP_CAPTAGES" "$TMP_DISTRIB" > "$TMP_FILTERED"
-    
+    # =========================================================================
     # Appel du programme C
-    echo "Calcul des fuites..."
-    ./wildwater leaks "$FACILITY_ID" "$TMP_FILTERED" "$OUTPUT_FILE"
+    # =========================================================================
     
+    # Le programme C lit directement le fichier complet et extrait
+    # toutes les informations necessaires pour l'usine specifiee
+    echo "Appel du programme C pour le calcul des fuites..."
+    "$CODE_C_DIR/wildwater" leaks "$IDENTIFIANT_USINE" "$FICHIER_DONNEES" "$RESULTAT_TEMPORAIRE"
+    
+    # Verification du code retour du programme C
     if [ $? -ne 0 ]; then
-        echo "Erreur lors de l'exécution du programme C"
-        rm -f "$TMP_CAPTAGES" "$TMP_DISTRIB" "$TMP_FILTERED"
-        afficher_duree
-        exit 1
+        rm -f "$RESULTAT_TEMPORAIRE"
+        erreur "Le programme C a retourne une erreur"
     fi
     
-    # Nettoyage des fichiers temporaires
-    rm -f "$TMP_CAPTAGES" "$TMP_DISTRIB" "$TMP_FILTERED"
+    # Ajouter le resultat au fichier principal (mode append)
+    if [ -f "$RESULTAT_TEMPORAIRE" ]; then
+        cat "$RESULTAT_TEMPORAIRE" >> "$FICHIER_SORTIE"
+        rm -f "$RESULTAT_TEMPORAIRE"
+    fi
     
-    echo ""
-    echo "=== Traitement terminé ==="
-    echo "Résultat ajouté dans : $OUTPUT_FILE"
-    echo ""
-    echo "Dernier résultat :"
-    tail -1 "$OUTPUT_FILE"
+    echo "Calcul des fuites termine avec succes"
+    echo "Resultat ajoute dans le fichier : $FICHIER_SORTIE"
     
+    # Afficher le dernier resultat calcule
+    echo ""
+    echo "Dernier resultat calcule :"
+    tail -1 "$FICHIER_SORTIE"
+
+# =============================================================================
+# Commande inconnue
+# =============================================================================
+
 else
-    # Action invalide
-    echo "Erreur : action invalide ($ACTION)"
-    echo "Actions supportées : histo ou leaks"
-    afficher_duree
-    exit 1
+    erreur "Commande inconnue : '$COMMANDE'. Commandes valides : histo, leaks"
 fi
 
-# Affichage de la duree d'execution
+# =============================================================================
+# Affichage de la duree totale d'execution
+# =============================================================================
+
 afficher_duree
 
 exit 0
