@@ -1,57 +1,307 @@
-/* ========================================
-   main.c - Point d'entrée du programme
-   ======================================== */
+/*
+ * main.c - Programme principal
+ * Projet C-Wildwater
+ * 
+ * Ce programme traite les donnees du reseau de distribution d'eau.
+ * Il peut generer des histogrammes ou calculer les fuites d'une usine.
+ * 
+ * Usage:
+ *   ./wildwater histo <mode> <fichier_entree> <fichier_sortie>
+ *   ./wildwater leaks <id_usine> <fichier_entree> <fichier_sortie>
+ * 
+ * Modes pour histo: max, src, real, all
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "avl.h"
-#include "histo.h"
-#include "leaks.h"
+#include "arbre_distrib.h"
 
-#define MAX_LINE 1024
+#define TAILLE_LIGNE 256
 
-int main(int argc, char *argv[]) {
-    if (argc < 4) {
-        fprintf(stderr, "Erreur: Nombre d'arguments insuffisant\n");
+/* 
+ * Traitement pour generer l'histogramme des usines
+ * mode: 1=max, 2=src, 3=real, 4=all
+ */
+int traiterHistogramme(char *fichierEntree, char *fichierSortie, int mode) {
+    FILE *fIn, *fOut;
+    char ligne[TAILLE_LIGNE];
+    char col1[50], col2[50], col3[50], col4[50], col5[50];
+    NoeudAVL *racine = NULL;
+    Usine usine;
+    int nbChamps;
+    int h;
+    double volumeCapte, pourcentageFuite;
+
+    /* Ouvrir le fichier d'entree */
+    fIn = fopen(fichierEntree, "r");
+    if (fIn == NULL) {
+        fprintf(stderr, "Erreur: impossible d'ouvrir %s\n", fichierEntree);
         return 1;
     }
 
-    char *mode = argv[1];
-    char *input_file = argv[2];
-    char *output_file = argv[3];
+    /* Lire chaque ligne du fichier */
+    while (fgets(ligne, TAILLE_LIGNE, fIn) != NULL) {
+        col1[0] = '\0';
+        col2[0] = '\0';
+        col3[0] = '\0';
+        col4[0] = '\0';
+        col5[0] = '\0';
 
-    // Vérification du fichier d'entrée
-    FILE *file = fopen(input_file, "r");
-    if (file == NULL) {
-        fprintf(stderr, "Erreur: Impossible d'ouvrir le fichier %s\n", input_file);
-        return 2;
+        nbChamps = sscanf(ligne, "%49[^;];%49[^;];%49[^;];%49[^;];%49[^\n]",
+                          col1, col2, col3, col4, col5);
+
+        if (nbChamps < 2)
+            continue;
+
+        /* Ligne d'usine: -;Usine;-;capacite;- */
+        if (strcmp(col1, "-") == 0 && strcmp(col3, "-") == 0 && 
+            strcmp(col5, "-") == 0 && strlen(col4) > 0) {
+            if (strstr(col2, "Plant") != NULL || strstr(col2, "Module") != NULL ||
+                strstr(col2, "Unit") != NULL || strstr(col2, "Facility") != NULL) {
+                memset(&usine, 0, sizeof(Usine));
+                strncpy(usine.identifiant, col2, 49);
+                usine.identifiant[49] = '\0';
+                usine.capacite_max = atof(col4);
+                usine.volume_capte = 0.0;
+                usine.volume_traite = 0.0;
+                h = 0;
+                racine = insererAVL(racine, usine, &h);
+            }
+        }
+        /* Ligne de captage: -;Source;Usine;volume;pourcentage */
+        else if (strcmp(col1, "-") == 0 && strlen(col4) > 0 && strcmp(col4, "-") != 0 &&
+                 strlen(col5) > 0 && strcmp(col5, "-") != 0) {
+            if ((strstr(col2, "Source") != NULL || strstr(col2, "Well") != NULL ||
+                 strstr(col2, "Spring") != NULL || strstr(col2, "Fountain") != NULL ||
+                 strstr(col2, "Resurgence") != NULL) &&
+                (strstr(col3, "Plant") != NULL || strstr(col3, "Module") != NULL ||
+                 strstr(col3, "Unit") != NULL || strstr(col3, "Facility") != NULL)) {
+                
+                volumeCapte = atof(col4);
+                pourcentageFuite = atof(col5);
+
+                memset(&usine, 0, sizeof(Usine));
+                strncpy(usine.identifiant, col3, 49);
+                usine.identifiant[49] = '\0';
+                usine.capacite_max = 0.0;
+                usine.volume_capte = volumeCapte;
+                usine.volume_traite = volumeCapte * (1.0 - pourcentageFuite / 100.0);
+                
+                h = 0;
+                racine = insererAVL(racine, usine, &h);
+            }
+        }
     }
-    fclose(file);
 
-    // Traitement selon le mode
-    if (strcmp(mode, "max") == 0) {
-        return process_max(input_file, output_file);
-    } 
-    else if (strcmp(mode, "src") == 0) {
-        return process_src(input_file, output_file);
-    } 
-    else if (strcmp(mode, "real") == 0) {
-        return process_real(input_file, output_file);
-    } 
-    else if (strcmp(mode, "leaks") == 0) {
-        if (argc < 5) {
-            fprintf(stderr, "Erreur: Mode leaks nécessite un identifiant d'usine\n");
+    fclose(fIn);
+
+    /* Ouvrir le fichier de sortie */
+    fOut = fopen(fichierSortie, "w");
+    if (fOut == NULL) {
+        fprintf(stderr, "Erreur: impossible de creer %s\n", fichierSortie);
+        libererAVL(racine);
+        return 1;
+    }
+
+    /* Ecrire l'en-tete */
+    if (mode == 1) {
+        fprintf(fOut, "identifier;max volume (M.m3.year-1)\n");
+    } else if (mode == 2) {
+        fprintf(fOut, "identifier;source volume (M.m3.year-1)\n");
+    } else if (mode == 3) {
+        fprintf(fOut, "identifier;real volume (M.m3.year-1)\n");
+    } else if (mode == 4) {
+        fprintf(fOut, "identifier;real volume;lost volume;available capacity\n");
+    }
+
+    parcoursInverseAVL(racine, fOut, mode);
+
+    fclose(fOut);
+    printf("Traitement histogramme termine avec succes\n");
+    libererAVL(racine);
+    return 0;
+}
+
+/*
+ * Traitement pour calculer les fuites d'une usine
+ * 
+ * Utilise:
+ * - Un Arbre pour representer le reseau de distribution
+ * - Un AVL_Index pour retrouver rapidement les noeuds par leur nom
+ */
+int traiterFuites(char *fichierEntree, char *fichierSortie, char *idUsine) {
+    FILE *fIn, *fOut;
+    char ligne[TAILLE_LIGNE];
+    char col1[50], col2[50], col3[50], col4[50], col5[50];
+    int nbChamps;
+    int usine_trouvee = 0;
+    int h;
+    float volume_initial = 0.0f;
+    float fuites_totales = 0.0f;
+    float pourcentage;
+
+    /* Arbre de distribution et AVL d'index */
+    Arbre *racineArbre = NULL;
+    AVL_Index *racineIndex = NULL;
+    Arbre *parent, *nouveau;
+
+    /* Ouvrir le fichier d'entree */
+    fIn = fopen(fichierEntree, "r");
+    if (fIn == NULL) {
+        fprintf(stderr, "Erreur: impossible d'ouvrir %s\n", fichierEntree);
+        return 1;
+    }
+
+    /* ========== Premiere passe: calculer le volume initial ========== */
+    /* On cherche les lignes source -> usine pour notre usine */
+    while (fgets(ligne, TAILLE_LIGNE, fIn) != NULL) {
+        col1[0] = '\0';
+        col2[0] = '\0';
+        col3[0] = '\0';
+        col4[0] = '\0';
+        col5[0] = '\0';
+
+        nbChamps = sscanf(ligne, "%49[^;];%49[^;];%49[^;];%49[^;];%49[^\n]",
+                          col1, col2, col3, col4, col5);
+
+        if (nbChamps < 2)
+            continue;
+
+        /* Ligne source -> usine: -;Source;Usine;volume;pourcentage */
+        if (strcmp(col1, "-") == 0 && strcmp(col3, idUsine) == 0 &&
+            strlen(col4) > 0 && strcmp(col4, "-") != 0 &&
+            strlen(col5) > 0 && strcmp(col5, "-") != 0) {
+            float vol = (float)atof(col4);
+            float fuite = (float)atof(col5);
+            volume_initial += vol * (1.0f - fuite / 100.0f);
+            usine_trouvee = 1;
+        }
+    }
+
+    /* Si l'usine n'est pas trouvee, ecrire -1 */
+    if (!usine_trouvee) {
+        fclose(fIn);
+        fOut = fopen(fichierSortie, "a");
+        if (fOut == NULL) {
+            fprintf(stderr, "Erreur: impossible d'ouvrir %s\n", fichierSortie);
             return 1;
         }
-        char *facility_id = argv[3];
-        char *leak_output = argv[4];
-        return process_leaks(input_file, facility_id, leak_output);
+        fprintf(fOut, "%s;-1\n", idUsine);
+        fclose(fOut);
+        return 0;
     }
-    else {
-        fprintf(stderr, "Erreur: Mode inconnu (%s)\n", mode);
+
+    /* ========== Deuxieme passe: construire l'arbre de distribution ========== */
+    rewind(fIn);
+
+    /* Creer le noeud racine (l'usine elle-meme) */
+    racineArbre = creerArbre(idUsine, 0.0f);
+    h = 0;
+    racineIndex = insererAVLIndex(racineIndex, idUsine, racineArbre, &h);
+
+    while (fgets(ligne, TAILLE_LIGNE, fIn) != NULL) {
+        col1[0] = '\0';
+        col2[0] = '\0';
+        col3[0] = '\0';
+        col4[0] = '\0';
+        col5[0] = '\0';
+
+        nbChamps = sscanf(ligne, "%49[^;];%49[^;];%49[^;];%49[^;];%49[^\n]",
+                          col1, col2, col3, col4, col5);
+
+        if (nbChamps < 3)
+            continue;
+
+        /* 
+         * Verifier si cette ligne concerne notre usine:
+         * - col1 contient l'usine (pour distribution)
+         * - OU col1 = "-" et col2 = usine (pour usine -> stockage)
+         */
+        if ((strcmp(col1, idUsine) == 0) || 
+            (strcmp(col1, "-") == 0 && strcmp(col2, idUsine) == 0)) {
+            
+            /* Recuperer le pourcentage de fuite */
+            if (strlen(col5) > 0 && strcmp(col5, "-") != 0) {
+                pourcentage = (float)atof(col5);
+            } else {
+                pourcentage = 0.0f;
+            }
+
+            /* Chercher le parent dans l'AVL d'index */
+            parent = rechercherAVLIndex(racineIndex, col2);
+            
+            if (parent != NULL && strlen(col3) > 0 && strcmp(col3, "-") != 0) {
+                /* Creer le nouveau noeud enfant */
+                nouveau = creerArbre(col3, pourcentage);
+                
+                /* Ajouter comme enfant du parent (via liste chainee) */
+                ajouterEnfant(parent, nouveau);
+                
+                /* Ajouter au AVL d'index pour pouvoir le retrouver */
+                h = 0;
+                racineIndex = insererAVLIndex(racineIndex, col3, nouveau, &h);
+            }
+        }
+    }
+
+    fclose(fIn);
+
+    /* ========== Calculer les fuites ========== */
+    fuites_totales = calculerFuites(racineArbre, volume_initial);
+
+    /* Convertir en millions de m3 */
+    fuites_totales = fuites_totales / 1000.0f;
+
+    /* Ecrire le resultat */
+    fOut = fopen(fichierSortie, "a");
+    if (fOut == NULL) {
+        fprintf(stderr, "Erreur: impossible d'ouvrir %s\n", fichierSortie);
+        libererArbre(racineArbre);
+        libererAVLIndex(racineIndex);
         return 1;
     }
 
+    fprintf(fOut, "%s;%.6f\n", idUsine, fuites_totales);
+    fclose(fOut);
+
+    /* Liberer la memoire */
+    libererArbre(racineArbre);
+    libererAVLIndex(racineIndex);
+
+    printf("Fuites calculees pour %s: %.6f M.m3\n", idUsine, fuites_totales);
     return 0;
+}
+
+/* Fonction principale */
+int main(int argc, char *argv[]) {
+    int mode;
+
+    if (argc < 5) {
+        fprintf(stderr, "Usage:\n");
+        fprintf(stderr, "  %s histo <mode> <fichier_entree> <fichier_sortie>\n", argv[0]);
+        fprintf(stderr, "  %s leaks <id_usine> <fichier_entree> <fichier_sortie>\n", argv[0]);
+        fprintf(stderr, "Modes: max, src, real, all\n");
+        return 1;
+    }
+
+    if (strcmp(argv[1], "histo") == 0) {
+        if (strcmp(argv[2], "max") == 0) mode = 1;
+        else if (strcmp(argv[2], "src") == 0) mode = 2;
+        else if (strcmp(argv[2], "real") == 0) mode = 3;
+        else if (strcmp(argv[2], "all") == 0) mode = 4;
+        else {
+            fprintf(stderr, "Erreur: mode inconnu '%s'\n", argv[2]);
+            return 1;
+        }
+        return traiterHistogramme(argv[3], argv[4], mode);
+    }
+    else if (strcmp(argv[1], "leaks") == 0) {
+        return traiterFuites(argv[3], argv[4], argv[2]);
+    }
+    else {
+        fprintf(stderr, "Erreur: commande inconnue '%s'\n", argv[1]);
+        return 1;
+    }
 }
